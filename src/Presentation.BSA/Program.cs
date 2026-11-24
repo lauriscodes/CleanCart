@@ -1,28 +1,80 @@
-using Presentation.BSA.Components;
+using System.Reflection;
+using HealthChecks.UI.Client;
+using Infrastructure.Extensions;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Presentation.BSA;
+using Presentation.Common.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+// ------------------------------------------------------------
+// Configuration
+// ------------------------------------------------------------
+
+// Ensure configuration is resolved relative to the entry assembly
+var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+var basePath = Directory.GetParent(assemblyLocation)!.FullName;
+
+builder.Configuration
+    .SetBasePath(basePath)
+    .AddCoreLayerConfiguration()
+    .AddPresentationLayerConfiguration();
+
+// ------------------------------------------------------------
+// Logging with Serilog
+// ------------------------------------------------------------
+
+builder.Host.UseSerilogFromConfiguration();
+
+// ------------------------------------------------------------
+// Services
+// ------------------------------------------------------------
+
+// Delegate all service registration
+var serviceComposition = new PresentationServiceComposition();
+serviceComposition.ConfigureServices(builder.Services, builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
+// ------------------------------------------------------------
+// Middleware Pipeline
+// ------------------------------------------------------------
+
+if (app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
-app.UseAntiforgery();
+// Static files are handled before endpoint execution
+app.UseStaticFiles();
 
-app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+// Security middleware
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.Run();
+// ------------------------------------------------------------
+// Endpoints
+// ------------------------------------------------------------
+
+app.MapBlazorHub();
+app.MapFallbackToPage("/_Host");
+app.MapRazorPages();
+// Controllers are required for Microsoft.Identity.Web.UI endpoints such as:
+// - /MicrosoftIdentity/Account/SignIn
+// - /MicrosoftIdentity/Account/SignedOut
+app.MapControllers();
+
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse,
+    AllowCachingResponses = false
+});
+
+await app.RunAsync();

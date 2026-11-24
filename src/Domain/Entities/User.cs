@@ -1,8 +1,9 @@
 ﻿using Domain.Enums;
+using EntityAxis.Abstractions;
 
 namespace Domain.Entities;
 
-public class User
+public class User : IEntityId<Guid>
 {
     private readonly List<UserRole> _roles = new();
 
@@ -14,11 +15,12 @@ public class User
         _roles.AddRange(roles);
     }
 
-    public Guid Id { get; private set; } = Guid.NewGuid();
     public string Username { get; }
     public string Email { get; }
     public string FullName { get; }
     public IReadOnlyCollection<UserRole> Roles => _roles.AsReadOnly();
+
+    public Guid Id { get; } = Guid.NewGuid();
 
     public void AddRole(UserRole role)
     {

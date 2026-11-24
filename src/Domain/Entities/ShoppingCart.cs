@@ -1,14 +1,16 @@
-﻿namespace Domain.Entities;
+﻿using EntityAxis.Abstractions;
 
-public class ShoppingCart(Guid userId)
+namespace Domain.Entities;
+
+public class ShoppingCart(Guid userId) : IEntityId<Guid>
 {
     // Keep the mutable list private
     private readonly List<ShoppingCartItem> _items = new();
-    public Guid Id { get; private set; } = Guid.NewGuid();
     public Guid UserId { get; } = userId;
 
     // Preserve encapsulation via a read-only view
     public IReadOnlyCollection<ShoppingCartItem> Items => _items.AsReadOnly();
+    public Guid Id { get; } = Guid.NewGuid();
 
     public void AddItem(Guid productId, string productName, decimal productPrice, int quantity)
     {

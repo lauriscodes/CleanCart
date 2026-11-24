@@ -1,8 +1,9 @@
 ﻿using Domain.Enums;
+using EntityAxis.Abstractions;
 
 namespace Domain.Entities;
 
-public class Order
+public class Order : IEntityId<Guid>
 {
     private readonly List<OrderItem> _items = new();
 
@@ -16,10 +17,11 @@ public class Order
         Status = OrderStatus.Pending; // Initial status
     }
 
-    public Guid Id { get; private set; }
     public Guid UserId { get; private set; }
     public IReadOnlyCollection<OrderItem> Items => _items.AsReadOnly();
     public decimal TotalAmount { get; private set; }
     public DateTime CreatedOn { get; private set; }
     public OrderStatus Status { get; set; }
+
+    public Guid Id { get; }
 }

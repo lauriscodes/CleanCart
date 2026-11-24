@@ -1,0 +1,29 @@
+﻿﻿@page "/shoppingcart"
+
+<PageTitle>Shopping Cart</PageTitle>
+
+<MudContainer Class="pa-0">
+    <MudPaper Elevation="3" Class="pa-4">
+
+        <MudText Typo="Typo.h4">Shopping Cart</MudText>
+
+        @if (_shoppingCart == null || !_shoppingCart.Items.Any())
+        {
+            <MudText Typo="Typo.subtitle1">Your cart is empty.</MudText>
+        }
+        else
+        {
+            <ShoppingCartTable ShoppingCart="_shoppingCart"
+                               OnRemoveItemClicked="RemoveItem"/>
+
+            <MudStack Row Justify="Justify.FlexEnd">
+                <MudButton Color="Color.Primary"
+                           Size="Size.Small"
+                           OnClick="ProceedToCheckout">
+                    Proceed to Checkout
+                </MudButton>
+            </MudStack>
+        }
+
+    </MudPaper>
+</MudContainer>

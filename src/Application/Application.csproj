@@ -1,10 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="EntityAxis.MediatR" Version="3.0.2"/>
+        <!-- Lock MediatR before commercial version v13 -->
+        <PackageReference Include="MediatR" Version="[12.5.0]"/>
+    </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Domain\Domain.csproj"/>

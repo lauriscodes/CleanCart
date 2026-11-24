@@ -1,9 +1,9 @@
-﻿using System.Reflection;
-using Application.Interfaces.Services.Payment;
-using Application.Interfaces.UseCases;
+﻿using AutoMapper;
 using Infrastructure.Clients;
 using Infrastructure.Configuration;
-using Infrastructure.Services;
+using Infrastructure.HealthChecks;
+using Infrastructure.Persistence.EntityFramework;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -13,27 +13,6 @@ namespace Infrastructure.Extensions;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddCoreLayerServices(this IServiceCollection services,
-        IConfiguration configuration)
-    {
-        // Configuration
-        services.AddOptions()
-            .AddTransient(typeof(OptionsFactory<>))
-            .AddTransient(typeof(OptionsMonitor<>))
-            .AddOptions<PaymentGatewayApiOptions>(configuration);
-
-        // Services
-        services.AddScoped<IPaymentGateway, PaymentGateway>();
-
-        // HttpClients
-        services.AddPaymentGatewayApi();
-
-        // Use Cases
-        services.AddUseCases(typeof(IAddItemToCartUseCase));
-
-        return services;
-    }
-
     public static IServiceCollection AddOptions<T>(this IServiceCollection services, IConfiguration configuration)
         where T : class, new()
     {
@@ -59,7 +38,44 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    private static IServiceCollection AddPaymentGatewayApi(this IServiceCollection services)
+    public static IServiceCollection AddSqlServer(this IServiceCollection services)
+    {
+        services.AddDbContextFactory<CoreDbContext>((serviceProvider, builder) =>
+            {
+                var options = serviceProvider.GetRequiredService<IOptionsMonitor<SqlServerOptions>>().CurrentValue;
+
+                if (string.IsNullOrEmpty(options.ConnectionString))
+                    throw new ArgumentNullException(nameof(options.ConnectionString));
+
+                builder.UseSqlServer(options.ConnectionString, sqlServerOptions =>
+                    {
+                        sqlServerOptions.MigrationsAssembly(typeof(CoreDbContext).Assembly.FullName);
+                        sqlServerOptions.EnableRetryOnFailure();
+                    }
+                );
+
+                if (options.EnableSensitiveDataLogging)
+                    builder.EnableSensitiveDataLogging();
+            }
+        );
+
+        return services;
+    }
+
+    public static void AddAutoMapper(this IServiceCollection services)
+    {
+        services.AddSingleton(serviceProvider =>
+        {
+            var configurationExpression = new MapperConfigurationExpression();
+            var profiles = serviceProvider.GetServices<Profile>();
+            foreach (var profile in profiles) configurationExpression.AddProfile(profile);
+            configurationExpression.ConstructServicesUsing(serviceProvider.GetService);
+            var mapperConfiguration = new MapperConfiguration(configurationExpression);
+            return mapperConfiguration.CreateMapper();
+        });
+    }
+
+    public static IServiceCollection AddPaymentGatewayApi(this IServiceCollection services)
     {
         services.AddHttpClient<IPaymentGatewayApi>((serviceProvider, client) =>
             {
@@ -71,25 +87,10 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddUseCases(this IServiceCollection services, Type knownInterface)
+    public static IServiceCollection AddAppHealthChecks(this IServiceCollection services)
     {
-        var assembly = Assembly.GetAssembly(knownInterface);
-        if (assembly == null) throw new InvalidOperationException("Assembly could not be found.");
-
-        var interfaceNamespace = knownInterface.Namespace;
-        if (interfaceNamespace == null) throw new InvalidOperationException("Namespace could not be determined.");
-
-        var interfaces = assembly.GetTypes()
-            .Where(t => t.IsInterface && t.Namespace == interfaceNamespace);
-
-        foreach (var @interface in interfaces)
-        {
-            var implementation = assembly.GetTypes()
-                .FirstOrDefault(t => t.IsClass && !t.IsAbstract && @interface.IsAssignableFrom(t));
-
-            if (implementation != null) services.AddScoped(@interface, implementation);
-        }
-
+        services.AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>("SQL Server Database");
         return services;
     }
 }

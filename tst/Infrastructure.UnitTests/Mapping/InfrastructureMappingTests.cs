@@ -1,0 +1,175 @@
+﻿using System.Reflection;
+using AutoFixture;
+using AutoFixture.Kernel;
+using AutoMapper;
+using Domain.Entities;
+using Domain.Enums;
+using FluentAssertions;
+using Infrastructure.Composition;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Infrastructure.UnitTests.Mapping;
+
+public class InfrastructureMappingTests
+{
+    public InfrastructureMappingTests()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.core.json", false)
+            .Build();
+
+        // Reuse the same extension that wires up AutoMapper and profiles
+        var pipeline = new AppServiceRegistrationPipeline();
+        pipeline.Execute(services, configuration);
+        Mapper = services.BuildServiceProvider().GetRequiredService<IMapper>();
+    }
+
+    private IMapper Mapper { get; }
+    private IFixture Fixture { get; } = new Fixture().Customize(new IgnorePropertiesStartingWithNavCustomization());
+
+    [Fact]
+    public void DomainOrderItem_MapsTo_DomainShoppingCartItem()
+    {
+        var domainOrderItem = new OrderItem(Guid.NewGuid(), "Test Product", 20, 1);
+        var expected = new ShoppingCartItem(domainOrderItem.ProductId, domainOrderItem.ProductName,
+            domainOrderItem.ProductPrice, domainOrderItem.Quantity);
+
+        var actual = Mapper.Map<ShoppingCartItem>(domainOrderItem);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public void DomainShoppingCartItem_MapsTo_DomainOrderItem()
+    {
+        var domainShoppingCartItem = new ShoppingCartItem(Guid.NewGuid(), "Test Product", 20, 1);
+        var expected = new OrderItem(domainShoppingCartItem.ProductId, domainShoppingCartItem.ProductName,
+            domainShoppingCartItem.ProductPrice, domainShoppingCartItem.Quantity);
+
+        var actual = Mapper.Map<OrderItem>(domainShoppingCartItem);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public void DomainOrder_MapsTo_SqlOrder()
+    {
+        var items = new List<OrderItem>
+        {
+            new(Guid.NewGuid(), "Test Product", 20, 1)
+        };
+        var domainOrder = new Order(Guid.NewGuid(), items, 20);
+
+        var sqlOrder = Mapper.Map<Persistence.Entities.Order>(domainOrder);
+
+        sqlOrder.Should().BeEquivalentTo(domainOrder, options => options.Excluding(o => o.Status));
+        sqlOrder.Status.Should().Be(domainOrder.Status);
+    }
+
+    [Fact]
+    public void SqlOrder_MapsTo_DomainOrder()
+    {
+        var sqlOrder = Fixture.Create<Persistence.Entities.Order>();
+
+        var domainOrder = Mapper.Map<Order>(sqlOrder);
+
+        domainOrder.Should().BeEquivalentTo(sqlOrder, options =>
+        {
+            options.Excluding(o => o.NavUser);
+            options.Excluding(o => o.Status);
+            return options;
+        });
+        domainOrder.Status.Should().Be(sqlOrder.Status);
+    }
+
+    [Fact]
+    public void DomainProduct_MapsTo_SqlProduct()
+    {
+        var domainProduct = Fixture.Create<Product>();
+
+        var sqlProduct = Mapper.Map<Persistence.Entities.Product>(domainProduct);
+
+        sqlProduct.Should().BeEquivalentTo(domainProduct);
+    }
+
+    [Fact]
+    public void SqlProduct_MapsTo_DomainProduct()
+    {
+        var sqlProduct = Fixture.Create<Persistence.Entities.Product>();
+
+        var domainProduct = Mapper.Map<Product>(sqlProduct);
+
+        domainProduct.Should().BeEquivalentTo(sqlProduct);
+    }
+
+    [Fact]
+    public void DomainShoppingCart_MapsTo_SqlShoppingCart()
+    {
+        var cartItems = new List<ShoppingCartItem>
+        {
+            new(Guid.NewGuid(), "Test Product", 20, 1)
+        };
+        var domainShoppingCart = new ShoppingCart(Guid.NewGuid());
+        foreach (var cartItem in cartItems)
+            domainShoppingCart.AddItem(cartItem.ProductId, cartItem.ProductName, cartItem.ProductPrice,
+                cartItem.Quantity);
+
+        var sqlShoppingCart = Mapper.Map<Persistence.Entities.ShoppingCart>(domainShoppingCart);
+
+        sqlShoppingCart.Should().BeEquivalentTo(domainShoppingCart);
+    }
+
+    [Fact]
+    public void SqlShoppingCart_MapsTo_DomainShoppingCart()
+    {
+        var sqlShoppingCart = Fixture.Create<Persistence.Entities.ShoppingCart>();
+
+        var domainShoppingCart = Mapper.Map<ShoppingCart>(sqlShoppingCart);
+
+        domainShoppingCart.Should().BeEquivalentTo(sqlShoppingCart);
+    }
+
+    [Fact]
+    public void DomainUser_MapsTo_SqlUser()
+    {
+        var domainUser = Fixture.Create<User>();
+
+        var sqlUser = Mapper.Map<Persistence.Entities.User>(domainUser);
+
+        sqlUser.Should().BeEquivalentTo(domainUser);
+    }
+
+    [Fact]
+    public void SqlUser_MapsTo_DomainUser()
+    {
+        var sqlUser = Fixture.Create<Persistence.Entities.User>();
+        sqlUser.Roles = [UserRole.CustomerService.ToString()];
+
+        var domainUser = Mapper.Map<User>(sqlUser);
+
+        domainUser.Should().BeEquivalentTo(sqlUser);
+    }
+
+    public class IgnorePropertiesStartingWithNavCustomization : ICustomization
+    {
+        public void Customize(IFixture fixture)
+        {
+            fixture.Customizations.Add(new IgnorePropertiesStartingWithNavSpecimenBuilder());
+        }
+    }
+
+    public class IgnorePropertiesStartingWithNavSpecimenBuilder : ISpecimenBuilder
+    {
+        public object? Create(object request, ISpecimenContext context)
+        {
+            var pi = request as PropertyInfo;
+            if (pi != null &&
+                pi.Name.StartsWith("Nav",
+                    StringComparison.Ordinal)) return null; // Indicate that the property should not be populated
+
+            return new NoSpecimen();
+        }
+    }
+}
